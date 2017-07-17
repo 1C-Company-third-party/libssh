@@ -217,6 +217,10 @@ struct error_struct {
     char error_buffer[ERROR_BUFFERLEN];
 };
 
+/* 1C LLC 28.06.17 */
+char* ssh_get_error_from_last_err();
+/* 1C LLC */
+
 #define ssh_set_error(error, code, ...) \
     _ssh_set_error(error, code, __func__, __VA_ARGS__)
 void _ssh_set_error(void *error,

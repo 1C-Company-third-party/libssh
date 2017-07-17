@@ -97,19 +97,10 @@ static socket_t bind_socket(ssh_bind sshbind, const char *hostname,
                            ai->ai_socktype,
                            ai->ai_protocol);
     if (s == SSH_INVALID_SOCKET) {
-        ssh_set_error(sshbind, SSH_FATAL, "%s", strerror(errno));
+        ssh_set_error(sshbind, SSH_FATAL, "%s",
+            /* 1C LLC 28.06.17 */
+            ssh_get_error_from_last_err());
         freeaddrinfo (ai);
-        return -1;
-    }
-
-    if (setsockopt(s, SOL_SOCKET, SO_REUSEADDR,
-                   (char *)&opt, sizeof(opt)) < 0) {
-        ssh_set_error(sshbind,
-                      SSH_FATAL,
-                      "Setting socket options failed: %s",
-                      strerror(errno));
-        freeaddrinfo (ai);
-        CLOSE_SOCKET(s);
         return -1;
     }
 
@@ -119,7 +110,8 @@ static socket_t bind_socket(ssh_bind sshbind, const char *hostname,
                       "Binding to %s:%d: %s",
                       hostname,
                       port,
-                      strerror(errno));
+                      /* 1C LLC 28.06.17 */
+                      ssh_get_error_from_last_err());
         freeaddrinfo (ai);
         CLOSE_SOCKET(s);
         return -1;
@@ -258,7 +250,9 @@ int ssh_bind_listen(ssh_bind sshbind) {
       if (listen(fd, 10) < 0) {
           ssh_set_error(sshbind, SSH_FATAL,
                   "Listening to socket %d: %s",
-                  fd, strerror(errno));
+                  fd,
+                  /* 1C LLC 28.06.17 */
+                  ssh_get_error_from_last_err());
           CLOSE_SOCKET(fd);
           ssh_key_free(sshbind->dsa);
           sshbind->dsa = NULL;
@@ -489,7 +483,8 @@ int ssh_bind_accept(ssh_bind sshbind, ssh_session session) {
   if (fd == SSH_INVALID_SOCKET) {
     ssh_set_error(sshbind, SSH_FATAL,
         "Accepting a new connection: %s",
-        strerror(errno));
+        /* 1C LLC 28.06.17 */
+        ssh_get_error_from_last_err());
     return SSH_ERROR;
   }
   rc = ssh_bind_accept_fd(sshbind, session, fd);

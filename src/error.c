@@ -23,6 +23,7 @@
 
 #include <stdio.h>
 #include <stdarg.h>
+#include <errno.h>
 #include "libssh/priv.h"
 #include "libssh/session.h"
 
@@ -113,6 +114,35 @@ const char *ssh_get_error(void *error) {
 
   return err->error_buffer;
 }
+
+/* 1C LLC 28.06.17 */
+/**
+* @internal
+* 
+* @brief Retrieve the error code from the last error.
+*/
+char* ssh_get_error_from_last_err()
+{
+#ifdef _WIN32
+    static char buff[ERROR_BUFFERLEN + 1];
+
+    int last_error = WSAGetLastError();
+    if (FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM,
+        NULL,
+        last_error,
+        MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+        (LPSTR)buff,
+        ERROR_BUFFERLEN,
+        NULL) != 0)
+    {
+        return buff;
+    }
+    return strerror(last_error);
+#else
+    return strerror(errno);
+#endif
+}
+/* 1C LLC */
 
 /**
  * @brief Retrieve the error code from the last error.

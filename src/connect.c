@@ -242,7 +242,12 @@ socket_t ssh_connect_host(ssh_session session, const char *host,
   for (itr = ai; itr != NULL; itr = itr->ai_next){
     /* create socket */
     s = socket(itr->ai_family, itr->ai_socktype, itr->ai_protocol);
+    /* 1C LLC 28.06.17 */
+#ifndef _WIN32
     if (s < 0) {
+#else
+    if (s == INVALID_SOCKET) {
+#endif
       ssh_set_error(session, SSH_FATAL,
           "Socket create failed: %s", strerror(errno));
       continue;
@@ -336,7 +341,12 @@ socket_t ssh_connect_host_nonblocking(ssh_session session, const char *host,
   for (itr = ai; itr != NULL; itr = itr->ai_next){
     /* create socket */
     s = socket(itr->ai_family, itr->ai_socktype, itr->ai_protocol);
+    /* 1C LLC 28.06.17 */
+#ifndef _WIN32
     if (s < 0) {
+#else
+    if (s == INVALID_SOCKET) {
+#endif
       ssh_set_error(session, SSH_FATAL,
           "Socket create failed: %s", strerror(errno));
       continue;

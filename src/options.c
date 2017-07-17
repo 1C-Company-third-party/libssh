@@ -472,7 +472,12 @@ int ssh_options_set(ssh_session session, enum ssh_options_e type,
                 return -1;
             } else {
                 socket_t *x = (socket_t *) value;
+                /* 1C LLC 28.06.17 */
+#ifndef _WIN32
                 if (*x < 0) {
+#else
+                if (*x == INVALID_SOCKET) {
+#endif
                     session->opts.fd = SSH_INVALID_SOCKET;
                     ssh_set_error_invalid(session);
                     return -1;
