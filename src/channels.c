@@ -2696,11 +2696,8 @@ int ssh_channel_read_timeout(ssh_channel channel,
   if (session->session_state == SSH_SESSION_STATE_ERROR){
       return SSH_ERROR;
   }
-  /* 1C LLC */
-  if (channel->remote_eof && buffer_get_rest_len(stdbuf) == 0) {
-    /* 1C LLC 11.08.16 Fix return value in case of EOF*/
-    return SSH_EOF;
-    /* 1C LLC */
+  if (channel->remote_eof && buffer_get_rest_len(stdbuf) == 0){
+    return 0;
   }
   len = buffer_get_rest_len(stdbuf);
   /* Read count bytes if len is greater, everything otherwise */
