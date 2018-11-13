@@ -43,6 +43,9 @@
 #include <openssl/hmac.h>
 #include <openssl/opensslv.h>
 #include <openssl/rand.h>
+/* 1C LLC. 19.11.2018. Support openssl 1.1.0 */
+#include <openssl/modes.h>
+/* 1C LLC */
 
 #ifdef HAVE_OPENSSL_AES_H
 #define HAS_AES
@@ -133,18 +136,23 @@ static const EVP_MD *nid_to_evpmd(int nid)
 void evp(int nid, unsigned char *digest, int len, unsigned char *hash, unsigned int *hlen)
 {
     const EVP_MD *evp_md = nid_to_evpmd(nid);
-    EVP_MD_CTX md;
+/* 1C LLC. 19.11.2018. Support openssl 1.1.0 */
+    EVP_MD_CTX* md = EVP_MD_CTX_new();
 
-    EVP_DigestInit(&md, evp_md);
-    EVP_DigestUpdate(&md, digest, len);
-    EVP_DigestFinal(&md, hash, hlen);
+    EVP_DigestInit(md, evp_md);
+    EVP_DigestUpdate(md, digest, len);
+    EVP_DigestFinal(md, hash, hlen);
+    EVP_MD_CTX_free(md);
+/* 1C LLC */
 }
 
 EVPCTX evp_init(int nid)
 {
     const EVP_MD *evp_md = nid_to_evpmd(nid);
 
-    EVPCTX ctx = malloc(sizeof(EVP_MD_CTX));
+/* 1C LLC. 19.11.2018. Support openssl 1.1.0 */
+    EVPCTX ctx = EVP_MD_CTX_new();
+/* 1C LLC */
     if (ctx == NULL) {
         return NULL;
     }
@@ -320,16 +328,12 @@ void ssh_mac_final(unsigned char *md, ssh_mac_ctx ctx) {
 }
 
 HMACCTX hmac_init(const void *key, int len, enum ssh_hmac_e type) {
-  HMACCTX ctx = NULL;
-
-  ctx = malloc(sizeof(*ctx));
+/* 1C LLC. 19.11.2018. Support openssl 1.1.0 */
+  HMACCTX ctx = HMAC_CTX_new();
+/* 1C LLC */
   if (ctx == NULL) {
     return NULL;
   }
-
-#ifndef OLD_CRYPTO
-  HMAC_CTX_init(ctx); // openssl 0.9.7 requires it.
-#endif
 
   switch(type) {
     case SSH_HMAC_SHA1:
@@ -348,7 +352,9 @@ HMACCTX hmac_init(const void *key, int len, enum ssh_hmac_e type) {
       HMAC_Init(ctx, key, len, EVP_md5());
       break;
     default:
-      SAFE_FREE(ctx);
+/* 1C LLC. 19.11.2018. Support openssl 1.1.0 */
+      HMAC_CTX_free(ctx);
+/* 1C LLC */
       ctx = NULL;
   }
 
@@ -362,13 +368,9 @@ void hmac_update(HMACCTX ctx, const void *data, unsigned long len) {
 void hmac_final(HMACCTX ctx, unsigned char *hashmacbuf, unsigned int *len) {
   HMAC_Final(ctx,hashmacbuf,len);
 
-#ifndef OLD_CRYPTO
-  HMAC_CTX_cleanup(ctx);
-#else
-  HMAC_cleanup(ctx);
-#endif
-
-  SAFE_FREE(ctx);
+/* 1C LLC. 19.11.2018. Support openssl 1.1.0 */
+  HMAC_CTX_free(ctx);
+/* 1C LLC */
 }
 
 #ifdef HAS_BLOWFISH
@@ -455,7 +457,9 @@ static void aes_ctr128_encrypt(struct ssh_cipher_struct *cipher, void *in, void 
    * Same for num, which is being used to store the current offset in blocksize in CTR
    * function.
    */
-  AES_ctr128_encrypt(in, out, len, cipher->key, cipher->IV, tmp_buffer, &num);
+/* 1C LLC. 19.11.2018. Support openssl 1.1.0 */
+  CRYPTO_ctr128_encrypt(in, out, len, cipher->key, cipher->IV, tmp_buffer, &num, (block128_f)AES_encrypt);
+/* 1C LLC */
 }
 #endif /* BROKEN_AES_CTR */
 #endif /* HAS_AES */

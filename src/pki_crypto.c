@@ -215,6 +215,14 @@ ssh_key pki_key_dup(const ssh_key key, int demote)
 {
     ssh_key new;
     int rc;
+/* 1C LLC. 19.11.2018. Support openssl 1.1.0 */
+    const BIGNUM *bn_p, *bn_q, *bn_g;
+    BIGNUM *bn_p2, *bn_q2, *bn_g2;
+    const BIGNUM* bn_pub_key;
+    BIGNUM* bn_pub_key2;
+    const BIGNUM *bn_n, *bn_e;
+    BIGNUM *bn_n2, *bn_e2;
+/* 1C LLC */
 
     new = ssh_key_new();
     if (new == NULL) {
@@ -243,31 +251,35 @@ ssh_key pki_key_dup(const ssh_key key, int demote)
          * pub_key  = public key y = g^x
          * priv_key = private key x
          */
-        new->dsa->p = BN_dup(key->dsa->p);
-        if (new->dsa->p == NULL) {
+/* 1C LLC. 19.11.2018. Support openssl 1.1.0 */
+        DSA_get0_pqg(key->dsa, &bn_p, &bn_q, &bn_g);
+        bn_p2 = BN_dup(bn_p);
+        bn_q2 = BN_dup(bn_q);
+        bn_g2 = BN_dup(bn_g);
+        if (bn_p2 == NULL || bn_q2 == NULL || bn_g2 == NULL) {
             goto fail;
         }
 
-        new->dsa->q = BN_dup(key->dsa->q);
-        if (new->dsa->q == NULL) {
+        DSA_set0_pqg(new->dsa, bn_p2, bn_q2, bn_g2);
+        DSA_get0_key(key->dsa, &bn_pub_key, 0);
+        bn_pub_key2 = BN_dup(bn_pub_key);
+        if (bn_pub_key2 == NULL) {
             goto fail;
         }
 
-        new->dsa->g = BN_dup(key->dsa->g);
-        if (new->dsa->g == NULL) {
-            goto fail;
-        }
-
-        new->dsa->pub_key = BN_dup(key->dsa->pub_key);
-        if (new->dsa->pub_key == NULL) {
-            goto fail;
-        }
-
+        DSA_set0_key(new->dsa, bn_pub_key2, 0);
+/* 1C LLC */
         if (!demote && (key->flags & SSH_KEY_FLAG_PRIVATE)) {
-            new->dsa->priv_key = BN_dup(key->dsa->priv_key);
-            if (new->dsa->priv_key == NULL) {
+/* 1C LLC. 19.11.2018. Support openssl 1.1.0 */
+            const BIGNUM* bn_priv_key;
+            BIGNUM* bn_priv_key2;
+            DSA_get0_key(key->dsa, 0, &bn_priv_key);
+            bn_priv_key2 = BN_dup(bn_priv_key);
+            if (bn_priv_key2 == NULL) {
                 goto fail;
             }
+            DSA_set0_key(new->dsa, 0, bn_priv_key2);
+/* 1C LLC */
         }
 
         break;
@@ -288,60 +300,72 @@ ssh_key pki_key_dup(const ssh_key key, int demote)
          * dmq1 = d mod (q-1)
          * iqmp = q^-1 mod p
          */
-        new->rsa->n = BN_dup(key->rsa->n);
-        if (new->rsa->n == NULL) {
+/* 1C LLC. 19.11.2018. Support openssl 1.1.0 */
+        RSA_get0_key(key->rsa, &bn_n, &bn_e, 0);
+        bn_n2 = BN_dup(bn_n);
+        bn_e2 = BN_dup(bn_e);
+        if (bn_n2 == NULL || bn_e2 == NULL) {
             goto fail;
         }
-
-        new->rsa->e = BN_dup(key->rsa->e);
-        if (new->rsa->e == NULL) {
-            goto fail;
-        }
+        RSA_set0_key(new->rsa, bn_n2, bn_e2, 0);
 
         if (!demote && (key->flags & SSH_KEY_FLAG_PRIVATE)) {
-            new->rsa->d = BN_dup(key->rsa->d);
-            if (new->rsa->d == NULL) {
+            const BIGNUM *bn_d;
+            BIGNUM *bn_d2;
+            const BIGNUM *bn_p, *bn_q;
+            BIGNUM *bn_p2 = 0, *bn_q2 = 0;
+            const BIGNUM *bn_dmp1, *bn_dmq1, *bn_iqmp;
+            BIGNUM *bn_dmp1_2 = 0, *bn_dmq1_2 = 0, *bn_iqmp2 = 0;
+
+            RSA_get0_key(key->rsa, 0, 0, &bn_d);
+            bn_d2 = BN_dup(bn_d);
+            if (bn_d2 == NULL) {
                 goto fail;
             }
+            RSA_set0_key(new->rsa, 0, 0, bn_d2);
 
             /* p, q, dmp1, dmq1 and iqmp may be NULL in private keys, but the
              * RSA operations are much faster when these values are available.
              */
-            if (key->rsa->p != NULL) {
-                new->rsa->p = BN_dup(key->rsa->p);
-                if (new->rsa->p == NULL) {
+            RSA_get0_factors(key->rsa, &bn_p, &bn_q);
+            if (bn_p != NULL) {
+                bn_p2 = BN_dup(bn_p);
+                if (bn_p2 == NULL) {
                     goto fail;
                 }
             }
 
-            if (key->rsa->q != NULL) {
-                new->rsa->q = BN_dup(key->rsa->q);
-                if (new->rsa->q == NULL) {
+            if (bn_q != NULL) {
+                bn_q2 = BN_dup(bn_q);
+                if (bn_q2 == NULL) {
+                    goto fail;
+                }
+            }
+            RSA_set0_factors(new->rsa, bn_p2, bn_q2);
+
+            RSA_get0_crt_params(key->rsa, &bn_dmp1, &bn_dmq1, &bn_iqmp);
+            if (bn_dmp1 != NULL) {
+                bn_dmp1_2 = BN_dup(bn_dmp1);
+                if (bn_dmp1_2 == NULL) {
                     goto fail;
                 }
             }
 
-            if (key->rsa->dmp1 != NULL) {
-                new->rsa->dmp1 = BN_dup(key->rsa->dmp1);
-                if (new->rsa->dmp1 == NULL) {
+            if (bn_dmq1 != NULL) {
+                bn_dmq1_2 = BN_dup(bn_dmq1);
+                if (bn_dmq1_2 == NULL) {
                     goto fail;
                 }
             }
 
-            if (key->rsa->dmq1 != NULL) {
-                new->rsa->dmq1 = BN_dup(key->rsa->dmq1);
-                if (new->rsa->dmq1 == NULL) {
+            if (bn_iqmp != NULL) {
+                bn_iqmp2 = BN_dup(bn_iqmp);
+                if (bn_iqmp2 == NULL) {
                     goto fail;
                 }
             }
-
-            if (key->rsa->iqmp != NULL) {
-                new->rsa->iqmp = BN_dup(key->rsa->iqmp);
-                if (new->rsa->iqmp == NULL) {
-                    goto fail;
-                }
-            }
-        }
+            RSA_set0_crt_params(new->rsa, bn_dmp1_2, bn_dmq1_2, bn_iqmp2);
+/* 1C LLC */
 
         break;
     case SSH_KEYTYPE_ECDSA:
@@ -467,49 +491,70 @@ int pki_key_compare(const ssh_key k1,
 {
     switch (k1->type) {
         case SSH_KEYTYPE_DSS:
-            if (DSA_size(k1->dsa) != DSA_size(k2->dsa)) {
+/* 1C LLC. 19.11.2018. Support openssl 1.1.0 */
+            const BIGNUM *bn_p1, *bn_q1, *bn_g1;
+            const BIGNUM *bn_p2, *bn_q2, *bn_g2;
+            DSA_get0_pqg(k1->dsa, &bn_p1, &bn_q1, &bn_g1);
+            DSA_get0_pqg(k2->dsa, &bn_p2, &bn_q2, &bn_g2);
+
+            if (bignum_cmp(bn_p1, bn_p2) != 0) {
                 return 1;
             }
-            if (bignum_cmp(k1->dsa->p, k2->dsa->p) != 0) {
+            if (bignum_cmp(bn_q1, bn_q2) != 0) {
                 return 1;
             }
-            if (bignum_cmp(k1->dsa->q, k2->dsa->q) != 0) {
+            if (bignum_cmp(bn_g1, bn_g2) != 0) {
                 return 1;
             }
-            if (bignum_cmp(k1->dsa->g, k2->dsa->g) != 0) {
-                return 1;
-            }
-            if (bignum_cmp(k1->dsa->pub_key, k2->dsa->pub_key) != 0) {
+
+            const BIGNUM *bn_pub_key1, *bn_priv_key1;
+            const BIGNUM *bn_pub_key2, *bn_priv_key2;
+            DSA_get0_key(k1->dsa, &bn_pub_key1, &bn_priv_key1);
+            DSA_get0_key(k2->dsa, &bn_pub_key2, &bn_priv_key2);
+
+            if (bignum_cmp(bn_pub_key1, bn_pub_key2) != 0) {
                 return 1;
             }
 
             if (what == SSH_KEY_CMP_PRIVATE) {
-                if (bignum_cmp(k1->dsa->priv_key, k2->dsa->priv_key) != 0) {
+                if (bignum_cmp(bn_priv_key1, bn_priv_key2) != 0) {
                     return 1;
                 }
             }
+/* 1C LLC */
             break;
         case SSH_KEYTYPE_RSA:
         case SSH_KEYTYPE_RSA1:
             if (RSA_size(k1->rsa) != RSA_size(k2->rsa)) {
                 return 1;
             }
-            if (bignum_cmp(k1->rsa->e, k2->rsa->e) != 0) {
+/* 1C LLC. 19.11.2018. Support openssl 1.1.0 */
+            const BIGNUM *bn_n1, *bn_e1;
+            const BIGNUM *bn_n2, *bn_e2;
+            RSA_get0_key(k1->rsa, &bn_n1, &bn_e1, 0);
+            RSA_get0_key(k1->rsa, &bn_n2, &bn_e2, 0);
+
+            if (bignum_cmp(bn_e1, bn_e2) != 0) {
                 return 1;
             }
-            if (bignum_cmp(k1->rsa->n, k2->rsa->n) != 0) {
+            if (bignum_cmp(bn_n1, bn_n2) != 0) {
                 return 1;
             }
 
             if (what == SSH_KEY_CMP_PRIVATE) {
-                if (bignum_cmp(k1->rsa->p, k2->rsa->p) != 0) {
+                const BIGNUM *bn_p1, *bn_q1;
+                const BIGNUM *bn_p2, *bn_q2;
+                RSA_get0_factors(k1->rsa, &bn_p1, &bn_q1);
+                RSA_get0_factors(k2->rsa, &bn_p2, &bn_q2);
+                if (bignum_cmp(bn_p1, bn_p2) != 0) {
                     return 1;
                 }
 
-                if (bignum_cmp(k1->rsa->q, k2->rsa->q) != 0) {
+                if (bignum_cmp(bn_q1, bn_q2) != 0) {
                     return 1;
                 }
             }
+/* 1C LLC */
             break;
         case SSH_KEYTYPE_ECDSA:
 #ifdef HAVE_OPENSSL_ECC
@@ -824,17 +869,22 @@ int pki_pubkey_build_dss(ssh_key key,
         return SSH_ERROR;
     }
 
-    key->dsa->p = make_string_bn(p);
-    key->dsa->q = make_string_bn(q);
-    key->dsa->g = make_string_bn(g);
-    key->dsa->pub_key = make_string_bn(pubkey);
-    if (key->dsa->p == NULL ||
-        key->dsa->q == NULL ||
-        key->dsa->g == NULL ||
-        key->dsa->pub_key == NULL) {
+/* 1C LLC. 19.11.2018. Support openssl 1.1.0 */
+    BIGNUM *bn_p = make_string_bn(p),
+        *bn_q = make_string_bn(q),
+        *bn_g = make_string_bn(g),
+        *bn_pub_key = make_string_bn(pubkey);
+    if (bn_p == NULL ||
+        bn_q == NULL ||
+        bn_g == NULL ||
+        bn_pub_key == NULL) {
         DSA_free(key->dsa);
         return SSH_ERROR;
     }
+
+    DSA_set0_pqg(key->dsa, bn_p, bn_q, bn_g);
+    DSA_set0_key(key->dsa, bn_pub_key, 0);
+/* 1C LLC */
 
     return SSH_OK;
 }
@@ -847,13 +897,17 @@ int pki_pubkey_build_rsa(ssh_key key,
         return SSH_ERROR;
     }
 
-    key->rsa->e = make_string_bn(e);
-    key->rsa->n = make_string_bn(n);
-    if (key->rsa->e == NULL ||
-        key->rsa->n == NULL) {
+/* 1C LLC. 19.11.2018. Support openssl 1.1.0 */
+    BIGNUM *bn_e = make_string_bn(e),
+        *bn_n = make_string_bn(n);
+    if (bn_e == NULL ||
+        bn_n == NULL) {
         RSA_free(key->rsa);
         return SSH_ERROR;
     }
+
+    RSA_set0_key(key->rsa, bn_n, bn_e, 0);
+/* 1C LLC */
 
     return SSH_OK;
 }
@@ -869,6 +923,11 @@ ssh_string pki_publickey_to_blob(const ssh_key key)
     ssh_string g = NULL;
     ssh_string q = NULL;
     int rc;
+/* 1C LLC. 19.11.2018. Support openssl 1.1.0 */
+    const BIGNUM *bn_p, *bn_q, *bn_g;
+    const BIGNUM *bn_pub_key;
+    const BIGNUM *bn_n, *bn_e;
+/* 1C LLC */
 
     buffer = ssh_buffer_new();
     if (buffer == NULL) {
@@ -890,22 +949,26 @@ ssh_string pki_publickey_to_blob(const ssh_key key)
 
     switch (key->type) {
         case SSH_KEYTYPE_DSS:
-            p = make_bignum_string(key->dsa->p);
+/* 1C LLC. 19.11.2018. Support openssl 1.1.0 */
+            DSA_get0_pqg(key->dsa, &bn_p, &bn_q, &bn_g);
+            p = make_bignum_string(bn_p);
             if (p == NULL) {
                 goto fail;
             }
 
-            q = make_bignum_string(key->dsa->q);
+            q = make_bignum_string(bn_q);
             if (q == NULL) {
                 goto fail;
             }
 
-            g = make_bignum_string(key->dsa->g);
+            g = make_bignum_string(bn_g);
             if (g == NULL) {
                 goto fail;
             }
 
-            n = make_bignum_string(key->dsa->pub_key);
+            DSA_get0_key(key->dsa, &bn_pub_key, 0);
+            n = make_bignum_string(bn_pub_key);
+/* 1C LLC */
             if (n == NULL) {
                 goto fail;
             }
@@ -939,12 +1002,15 @@ ssh_string pki_publickey_to_blob(const ssh_key key)
             break;
         case SSH_KEYTYPE_RSA:
         case SSH_KEYTYPE_RSA1:
-            e = make_bignum_string(key->rsa->e);
+/* 1C LLC. 19.11.2018. Support openssl 1.1.0 */
+            RSA_get0_key(key->rsa, &bn_n, &bn_e, 0);
+            e = make_bignum_string(bn_e);
             if (e == NULL) {
                 goto fail;
             }
 
-            n = make_bignum_string(key->rsa->n);
+            n = make_bignum_string(bn_n);
+/* 1C LLC */
             if (n == NULL) {
                 goto fail;
             }
@@ -1065,13 +1131,18 @@ int pki_export_pubkey_rsa1(const ssh_key key,
     char *e;
     char *n;
     int rsa_size = RSA_size(key->rsa);
-
-    e = bignum_bn2dec(key->rsa->e);
+/* 1C LLC. 19.11.2018. Support openssl 1.1.0 */
+    const BIGNUM *bn_n, *bn_e;
+    RSA_get0_key(key->rsa, &bn_n, &bn_e, 0);
+    e = bignum_bn2dec(bn_e);
+/* 1C LLC */
     if (e == NULL) {
         return SSH_ERROR;
     }
 
-    n = bignum_bn2dec(key->rsa->n);
+/* 1C LLC. 19.11.2018. Support openssl 1.1.0 */
+    n = bignum_bn2dec(bn_n);
+/* 1C LLC */
     if (n == NULL) {
         OPENSSL_free(e);
         return SSH_ERROR;
@@ -1143,12 +1214,18 @@ static ssh_string pki_dsa_signature_to_blob(const ssh_signature sig)
     ssh_string s;
     int s_len, s_offset_in, s_offset_out;
 
-    r = make_bignum_string(sig->dsa_sig->r);
+/* 1C LLC. 19.11.2018. Support openssl 1.1.0 */
+    const BIGNUM *bn_r, *bn_s;
+    DSA_SIG_get0(sig->dsa_sig, &bn_r, &bn_s);
+    r = make_bignum_string(bn_r);
+/* 1C LLC */
     if (r == NULL) {
         return NULL;
     }
 
-    s = make_bignum_string(sig->dsa_sig->s);
+/* 1C LLC. 19.11.2018. Support openssl 1.1.0 */
+    s = make_bignum_string(bn_s);
+/* 1C LLC */
     if (s == NULL) {
         ssh_string_free(r);
         return NULL;
@@ -1207,7 +1284,11 @@ ssh_string pki_signature_to_blob(const ssh_signature sig)
                 return NULL;
             }
 
-            r = make_bignum_string(sig->ecdsa_sig->r);
+/* 1C LLC. 19.11.2018. Support openssl 1.1.0 */
+            const BIGNUM *bn_r, *bn_s;
+            ECDSA_SIG_get0(sig->ecdsa_sig, &bn_r, &bn_s);
+            r = make_bignum_string(bn_r);
+/* 1C LLC */
             if (r == NULL) {
                 ssh_buffer_free(b);
                 return NULL;
@@ -1219,7 +1300,9 @@ ssh_string pki_signature_to_blob(const ssh_signature sig)
                 return NULL;
             }
 
-            s = make_bignum_string(sig->ecdsa_sig->s);
+/* 1C LLC. 19.11.2018. Support openssl 1.1.0 */
+            s = make_bignum_string(bn_s);
+/* 1C LLC */
             if (s == NULL) {
                 ssh_buffer_free(b);
                 return NULL;
@@ -1363,12 +1446,15 @@ ssh_signature pki_signature_from_blob(const ssh_key pubkey,
             }
             ssh_string_fill(r, ssh_string_data(sig_blob), 20);
 
-            sig->dsa_sig->r = make_string_bn(r);
+/* 1C LLC. 19.11.2018. Support openssl 1.1.0 */
+            BIGNUM *bn_r = make_string_bn(r);
             ssh_string_free(r);
-            if (sig->dsa_sig->r == NULL) {
+            if (bn_r == NULL) {
                 ssh_signature_free(sig);
                 return NULL;
             }
+
+            DSA_SIG_set0(sig->dsa_sig, bn_r, 0);
 
             s = ssh_string_new(20);
             if (s == NULL) {
@@ -1377,12 +1463,14 @@ ssh_signature pki_signature_from_blob(const ssh_key pubkey,
             }
             ssh_string_fill(s, (char *)ssh_string_data(sig_blob) + 20, 20);
 
-            sig->dsa_sig->s = make_string_bn(s);
+            BIGNUM *bn_s = make_string_bn(s);
             ssh_string_free(s);
-            if (sig->dsa_sig->s == NULL) {
+            if (bn_s == NULL) {
                 ssh_signature_free(sig);
                 return NULL;
             }
+            DSA_SIG_set0(sig->dsa_sig, 0, bn_s);
+/* 1C LLC */
 
             break;
         case SSH_KEYTYPE_RSA:
@@ -1426,15 +1514,18 @@ ssh_signature pki_signature_from_blob(const ssh_key pubkey,
 #ifdef DEBUG_CRYPTO
                 ssh_print_hexa("r", ssh_string_data(r), ssh_string_len(r));
 #endif
-
-                make_string_bn_inplace(r, sig->ecdsa_sig->r);
+/* 1C LLC. 19.11.2018. Support openssl 1.1.0 */
+                const BIGNUM *bn_r, *bn_s;
+                ECDSA_SIG_get0(sig->ecdsa_sig, &bn_r, &bn_s);
+                make_string_bn_inplace(r, bn_r);
                 ssh_string_burn(r);
                 ssh_string_free(r);
-                if (sig->ecdsa_sig->r == NULL) {
+                if (bn_r == NULL) {
                     ssh_buffer_free(b);
                     ssh_signature_free(sig);
                     return NULL;
                 }
+/* 1C LLC */
 
                 s = buffer_get_ssh_string(b);
                 rlen = buffer_get_rest_len(b);
@@ -1447,14 +1538,15 @@ ssh_signature pki_signature_from_blob(const ssh_key pubkey,
 #ifdef DEBUG_CRYPTO
                 ssh_print_hexa("s", ssh_string_data(s), ssh_string_len(s));
 #endif
-
-                make_string_bn_inplace(s, sig->ecdsa_sig->s);
+/* 1C LLC. 19.11.2018. Support openssl 1.1.0 */
+                make_string_bn_inplace(s, bn_s);
                 ssh_string_burn(s);
                 ssh_string_free(s);
-                if (sig->ecdsa_sig->s == NULL) {
+                if (bn_s == NULL) {
                     ssh_signature_free(sig);
                     return NULL;
                 }
+/* 1C LLC */
 
                 if (rlen != 0) {
                     ssh_pki_log("Signature has remaining bytes in inner "
