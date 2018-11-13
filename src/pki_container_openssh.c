@@ -158,7 +158,8 @@ static int pki_private_key_decrypt(ssh_string blob,
     char passphrase_buffer[128];
     size_t key_material_len;
     ssh_buffer buffer;
-    ssh_string salt;
+    /* 1C LLC 24.05.18 support VS2017 */
+    ssh_string salt = 0;
     uint32_t rounds;
     int cmp;
     int rc;

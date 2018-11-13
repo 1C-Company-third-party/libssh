@@ -1407,7 +1407,8 @@ int ssh_bind_options_set(ssh_bind sshbind, enum ssh_bind_options_e type,
           int key_type;
           ssh_key key;
           ssh_key *bind_key_loc = NULL;
-          char **bind_key_path_loc;
+          /* 1C LLC 24.05.18 support VS2017 */
+          char **bind_key_path_loc = 0;
 
           rc = ssh_pki_import_privkey_file(value, NULL, NULL, NULL, &key);
           if (rc != SSH_OK) {
