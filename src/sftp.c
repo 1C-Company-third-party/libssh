@@ -315,6 +315,7 @@ sftp_packet sftp_packet_read(sftp_session sftp) {
   sftp_packet packet = NULL;
   uint32_t tmp;
   size_t size;
+  int is_eof;
   int r, s;
 
   packet = malloc(sizeof(struct sftp_packet_struct));
@@ -334,13 +335,23 @@ sftp_packet sftp_packet_read(sftp_session sftp) {
   do {
     // read from channel until 4 bytes have been read or an error occurs
     s=ssh_channel_read(sftp->channel, buffer+r, 4-r, 0);
+    /* 1C LLC 26.02.2020 correct eof handling */
     if (s < 0) {
-      ssh_buffer_free(packet->payload);
-      SAFE_FREE(packet);
-      return NULL;
+      goto error;
+    }
+    else if (s == 0) {
+        is_eof = ssh_channel_is_eof(sftp->channel);
+        if (is_eof) {
+            ssh_set_error(sftp->session,
+                          SSH_FATAL,
+                          "Received EOF while reading sftp packet size");
+                          sftp_set_error(sftp, SSH_FX_EOF);
+           goto error;
+        }
     } else {
       r += s;
     }
+    /* 1C LLC */
   } while (r<4);
   ssh_buffer_add_data(packet->payload, buffer, r);
   if (buffer_get_u32(packet->payload, &tmp) != sizeof(uint32_t)) {
@@ -351,12 +362,21 @@ sftp_packet sftp_packet_read(sftp_session sftp) {
   }
 
   r=ssh_channel_read(sftp->channel, buffer, 1, 0);
-  if (r <= 0) {
-    /* TODO: check if there are cases where an error needs to be set here */
-    ssh_buffer_free(packet->payload);
-    SAFE_FREE(packet);
-    return NULL;
+  /* 1C LLC 26.02.2020 correct eof handling */
+  if (r < 0) {
+      goto error;
   }
+  else if (r == 0) {
+      is_eof = ssh_channel_is_eof(sftp->channel);
+      if (is_eof) {
+          ssh_set_error(sftp->session,
+              SSH_FATAL,
+              "Received EOF while reading sftp packet size");
+          sftp_set_error(sftp, SSH_FX_EOF);
+          goto error;
+      }
+  }
+  /* 1C LLC */
   ssh_buffer_add_data(packet->payload, buffer, r);
   buffer_get_u8(packet->payload, &packet->type);
 
@@ -369,13 +389,21 @@ sftp_packet sftp_packet_read(sftp_session sftp) {
   while (size > 0 && size < UINT_MAX) {
     r=ssh_channel_read(sftp->channel,buffer,
         sizeof(buffer)>size ? size:sizeof(buffer),0);
-
-    if(r <= 0) {
-      /* TODO: check if there are cases where an error needs to be set here */
-      ssh_buffer_free(packet->payload);
-      SAFE_FREE(packet);
-      return NULL;
+    /* 1C LLC 26.02.2020 correct eof handling */
+    if(r < 0) {
+        goto error;
     }
+    else if (r == 0) {
+        is_eof = ssh_channel_is_eof(sftp->channel);
+        if (is_eof) {
+            ssh_set_error(sftp->session,
+                SSH_FATAL,
+                "Received EOF while reading sftp packet size");
+            sftp_set_error(sftp, SSH_FX_EOF);
+            goto error;
+        }
+    }
+    /* 1C LLC */
     if (ssh_buffer_add_data(packet->payload, buffer, r) == SSH_ERROR) {
       ssh_buffer_free(packet->payload);
       SAFE_FREE(packet);
@@ -386,6 +414,12 @@ sftp_packet sftp_packet_read(sftp_session sftp) {
   }
 
   return packet;
+
+  /* 1C LLC 26.02.2020 correct eof handling */
+error:
+  ssh_buffer_reinit(packet->payload);
+  return NULL;
+  /* 1C LLC */
 }
 
 static void sftp_set_error(sftp_session sftp, int errnum) {
